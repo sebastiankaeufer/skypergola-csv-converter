@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shopify CSV Converter</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --gold: #C9A24E;
+  --gold-dim: rgba(201,162,78,0.12);
+  --gold-border: rgba(201,162,78,0.28);
+  --bg: #0c0c0c;
+  --s1: #141414;
+  --s2: #1a1a1a;
+  --s3: #202020;
+  --border: rgba(255,255,255,0.07);
+  --text: #e8e8e8;
+  --muted: rgba(255,255,255,0.42);
+  --green: #55AF10;
+  --red: #e05a5a;
+  --blue: #5a9fe0;
+  --radius: 12px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 14px;
+  min-height: 100vh;
+}
+code { font-family: 'DM Mono', monospace; font-size: 12px; background: rgba(255,255,255,0.07); padding: 2px 6px; border-radius: 4px; }
+
+/* Layout */
+.app { display: flex; flex-direction: column; min-height: 100vh; }
+
+.topbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 24px;
+  background: var(--s1);
+  border-bottom: 1px solid var(--border);
+  position: sticky; top: 0; z-index: 100;
+}
+.logo {
+  width: 32px; height: 32px; background: var(--gold); border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Syne', sans-serif; font-weight: 800; font-size: 13px; color: #000;
+  flex-shrink: 0;
+}
+.topbar-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 15px; }
+.topbar-sub { color: var(--muted); font-size: 12px; margin-left: auto; font-family: 'DM Mono', monospace; }
+
+/* Steps indicator */
+.steps-bar {
+  display: flex; align-items: center; gap: 0;
+  padding: 0 24px;
+  background: var(--s1);
+  border-bottom: 1px solid var(--border);
+}
+.step-tab {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 20px; cursor: pointer;
+  font-size: 13px; color: var(--muted);
+  border-bottom: 2px solid transparent;
+  transition: all .2s;
+  user-select: none;
+}
+.step-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+.step-tab.done { color: rgba(85,175,16,0.8); }
+.step-tab.locked { opacity: 0.4; cursor: not-allowed; }
+.step-num {
+  width: 20px; height: 20px; border-radius: 50%;
+  background: rgba(255,255,255,0.08); display: flex; align-items: center;
+  justify-content: center; font-family: 'DM Mono', monospace; font-size: 10px;
+  flex-shrink: 0;
+}
+.step-tab.active .step-num { background: var(--gold-dim); color: var(--gold); }
+.step-tab.done .step-num { background: rgba(85,175,16,0.15); color: var(--green); }
+
+/* Main content */
+.main { flex: 1; padding: 28px 24px; max-width: 1100px; margin: 0 auto; width: 100%; }
+
+/* Panel */
+.panel {
+  background: var(--s1); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden; margin-bottom: 16px;
+}
+.panel-head {
+  padding: 14px 18px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+  background: var(--s2);
+}
+.panel-head h3 { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; }
+.panel-head .hint { color: var(--muted); font-size: 12px; margin-left: auto; }
+.panel-body { padding: 18px; }
+
+/* Upload zone */
+.upload-zone {
+  border: 2px dashed rgba(255,255,255,0.1);
+  border-radius: var(--radius);
+  padding: 48px 24px;
+  text-align: center;
+  cursor: pointer;
+  transition: all .2s;
+  background: var(--s2);
+}
+.upload-zone:hover, .upload-zone.drag { border-color: var(--gold); background: var(--gold-dim); }
+.upload-icon { font-size: 36px; margin-bottom: 12px; }
+.upload-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 16px; margin-bottom: 6px; }
+.upload-sub { color: var(--muted); font-size: 13px; }
+.upload-types { display: flex; justify-content: center; gap: 8px; margin-top: 14px; }
+.type-badge {
+  background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+  border-radius: 999px; padding: 3px 10px; font-family: 'DM Mono', monospace;
+  font-size: 11px; color: var(--muted);
+}
+
+/* File loaded state */
+.file-loaded {
+  display: flex; align-items: center; gap: 12px;
+  background: rgba(85,175,16,0.07); border: 1px solid rgba(85,175,16,0.2);
+  border-radius: 10px; padding: 12px 16px;
+}
+.file-loaded .icon { font-size: 22px; }
+.file-loaded .name { font-weight: 600; font-size: 13px; }
+.file-loaded .meta { color: var(--muted); font-size: 12px; }
+.file-loaded .change-btn {
+  margin-left: auto; background: rgba(255,255,255,0.07); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 12px; color: var(--muted); font-size: 12px;
+  cursor: pointer; font-family: 'DM Sans', sans-serif; transition: all .2s;
+}
+.file-loaded .change-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.2); }
+
+/* Sheet selector */
+.sheet-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+.sheet-tab {
+  background: var(--s2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 5px 12px; font-size: 12px; cursor: pointer; transition: all .2s;
+  font-family: 'DM Mono', monospace;
+}
+.sheet-tab:hover { border-color: rgba(255,255,255,0.2); }
+.sheet-tab.active { background: var(--gold-dim); border-color: var(--gold-border); color: var(--gold); }
+
+/* Header row selector */
+.row-selector { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.row-selector label { font-size: 13px; color: var(--muted); }
+.num-input {
+  width: 64px; background: var(--s2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 10px; color: var(--text); font-size: 13px;
+  font-family: 'DM Mono', monospace; text-align: center;
+}
+.num-input:focus { outline: none; border-color: var(--gold); }
+
+/* Preview table */
+.preview-wrap { overflow-x: auto; margin-top: 12px; border-radius: 8px; border: 1px solid var(--border); }
+.preview-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.preview-table th {
+  background: #0a0a0a; padding: 8px 10px; text-align: left;
+  color: var(--muted); font-family: 'DM Mono', monospace; font-size: 11px;
+  border-bottom: 1px solid var(--border); white-space: nowrap;
+  position: sticky; top: 0;
+}
+.preview-table td {
+  padding: 7px 10px; border-bottom: 1px solid rgba(255,255,255,0.03);
+  max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--muted);
+}
+.preview-table tr:last-child td { border-bottom: none; }
+.preview-table .col-idx { color: rgba(255,255,255,0.2); font-family: 'DM Mono', monospace; font-size: 10px; }
+
+/* Mapping grid */
+.mapping-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.map-row {
+  display: flex; align-items: center; gap: 0;
+  background: var(--s2); border: 1px solid var(--border); border-radius: 10px;
+  overflow: hidden;
+}
+.map-target {
+  padding: 10px 12px; font-size: 12px; min-width: 0; flex: 0 0 45%;
+  border-right: 1px solid var(--border);
+}
+.map-target .field-name { font-weight: 600; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.map-target .field-required { color: var(--gold); font-size: 10px; font-family: 'DM Mono', monospace; }
+.map-arrow { padding: 0 8px; color: var(--muted); font-size: 12px; flex-shrink: 0; }
+.map-select {
+  flex: 1; background: transparent; border: none; color: var(--text);
+  font-size: 12px; padding: 10px 8px; font-family: 'DM Sans', sans-serif;
+  cursor: pointer; min-width: 0;
+}
+.map-select:focus { outline: none; }
+.map-select option { background: #1a1a1a; }
+
+/* Static value input */
+.static-input {
+  flex: 1; background: transparent; border: none; color: var(--gold);
+  font-size: 12px; padding: 10px 8px; font-family: 'DM Mono', monospace;
+}
+.static-input:focus { outline: none; }
+.static-input::placeholder { color: rgba(201,162,78,0.3); }
+
+/* Metafield rows */
+.mf-list { display: flex; flex-direction: column; gap: 8px; }
+.mf-row {
+  display: grid; grid-template-columns: 1fr 1fr 1fr auto;
+  gap: 8px; align-items: center;
+}
+.mf-input {
+  background: var(--s2); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; color: var(--text); font-size: 12px;
+  font-family: 'DM Mono', monospace;
+}
+.mf-input:focus { outline: none; border-color: var(--gold); }
+.mf-input::placeholder { color: rgba(255,255,255,0.2); }
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 9px 18px; border-radius: 9px; font-size: 13px; font-weight: 600;
+  cursor: pointer; border: none; font-family: 'DM Sans', sans-serif;
+  transition: all .15s; white-space: nowrap;
+}
+.btn-primary { background: var(--gold); color: #000; }
+.btn-primary:hover { background: #ddb55a; }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-ghost {
+  background: rgba(255,255,255,0.06); border: 1px solid var(--border); color: var(--muted);
+}
+.btn-ghost:hover { color: var(--text); border-color: rgba(255,255,255,0.2); }
+.btn-danger { background: rgba(224,90,90,0.12); border: 1px solid rgba(224,90,90,0.2); color: var(--red); }
+.btn-danger:hover { background: rgba(224,90,90,0.2); }
+.btn-sm { padding: 6px 12px; font-size: 12px; }
+.btn-green { background: rgba(85,175,16,0.15); border: 1px solid rgba(85,175,16,0.3); color: var(--green); }
+.btn-green:hover { background: rgba(85,175,16,0.25); }
+
+/* Action bar */
+.action-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 16px 24px;
+  background: var(--s1);
+  border-top: 1px solid var(--border);
+  position: sticky; bottom: 0; z-index: 100;
+}
+.action-bar .spacer { flex: 1; }
+
+/* Result */
+.result-box {
+  background: rgba(85,175,16,0.06); border: 1px solid rgba(85,175,16,0.2);
+  border-radius: var(--radius); padding: 20px; text-align: center;
+}
+.result-box .big { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 42px; color: var(--green); }
+.result-box .label { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+
+/* Stats row */
+.stats { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+.stat {
+  background: var(--s2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 16px; text-align: center; flex: 1;
+}
+.stat .n { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 24px; color: var(--gold); }
+.stat .l { font-size: 11px; color: var(--muted); font-family: 'DM Mono', monospace; }
+
+/* Callout */
+.callout {
+  border-radius: 9px; padding: 12px 14px; font-size: 13px;
+  display: flex; gap: 9px; align-items: flex-start; margin-bottom: 12px;
+}
+.callout.info { background: rgba(90,159,224,0.07); border: 1px solid rgba(90,159,224,0.2); color: #c0d4e8; }
+.callout.warn { background: rgba(224,90,90,0.07); border: 1px solid rgba(224,90,90,0.2); color: #e8c0c0; }
+
+/* Section label */
+.section-label {
+  font-family: 'DM Mono', monospace; font-size: 10px; text-transform: uppercase;
+  letter-spacing: 1px; color: var(--muted); margin-bottom: 10px;
+}
+
+/* Transform rules */
+.transform-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.transform-badge {
+  background: var(--s3); border: 1px solid var(--border); border-radius: 6px;
+  padding: 3px 9px; font-size: 11px; font-family: 'DM Mono', monospace; color: var(--muted);
+  cursor: pointer; transition: all .15s;
+}
+.transform-badge:hover { border-color: var(--gold-border); color: var(--gold); }
+.transform-badge.active { background: var(--gold-dim); border-color: var(--gold-border); color: var(--gold); }
+
+.scrollable { max-height: 220px; overflow-y: auto; }
+.scrollable::-webkit-scrollbar { width: 4px; }
+.scrollable::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+<div class="topbar">
+  <div class="logo">CSV</div>
+  <span class="topbar-title">Shopify CSV Converter</span>
+  <span class="topbar-sub">Excel / CSV → Shopify Import</span>
+</div>
+
+<div class="steps-bar" id="stepsBar">
+  <div class="step-tab active" data-step="1" onclick="goStep(1)">
+    <div class="step-num">1</div> Datei laden
+  </div>
+  <div class="step-tab locked" data-step="2" onclick="goStep(2)">
+    <div class="step-num">2</div> Spalten zuordnen
+  </div>
+  <div class="step-tab locked" data-step="3" onclick="goStep(3)">
+    <div class="step-num">3</div> Metafelder
+  </div>
+  <div class="step-tab locked" data-step="4" onclick="goStep(4)">
+    <div class="step-num">4</div> Exportieren
+  </div>
+</div>
+
+<div class="main" id="mainContent"></div>
+
+<div class="action-bar" id="actionBar"></div>
+
+</div>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────────
+const state = {
+  step: 1,
+  file: null,
+  workbook: null,
+  sheets: [],
+  activeSheet: 0,
+  headerRow: 1,       // 1-based
+  rawData: [],        // all rows as arrays
+  headers: [],        // detected column names
+  sourceRows: [],     // data rows
+
+  // Shopify target fields
+  mappings: {},       // shopifyField -> { type: 'column'|'static', value }
+  metafields: [],     // [{label, namespace, key, sourceCol}]
+  transforms: {},     // shopifyField -> [transform names]
+};
+
+// ─── Shopify fields ───────────────────────────────────────────────────────────
+const SHOPIFY_FIELDS = [
+  { key: 'Title',                       label: 'Title',                              required: true },
+  { key: 'URL handle',                  label: 'URL handle',                         required: false, hint: 'auto' },
+  { key: 'Description',                 label: 'Description',                        required: false },
+  { key: 'Vendor',                      label: 'Vendor',                             required: false },
+  { key: 'Type',                        label: 'Type',                               required: false },
+  { key: 'Tags',                        label: 'Tags',                               required: false },
+  { key: 'Published on online store',   label: 'Published on online store',          required: false },
+  { key: 'Status',                      label: 'Status',                             required: false },
+  { key: 'SKU',                         label: 'SKU',                                required: false },
+  { key: 'Barcode',                     label: 'Barcode',                            required: false },
+  { key: 'Price',                       label: 'Price',                              required: true },
+  { key: 'Compare-at price',            label: 'Compare-at price',                  required: false },
+  { key: 'Cost per item',               label: 'Cost per item',                      required: false },
+  { key: 'Charge tax',                  label: 'Charge tax',                         required: false },
+  { key: 'Inventory tracker',           label: 'Inventory tracker',                  required: false },
+  { key: 'Inventory quantity',          label: 'Inventory quantity',                 required: false },
+  { key: 'Continue selling when out of stock', label: 'Continue selling (out of stock)', required: false },
+  { key: 'Weight value (grams)',        label: 'Weight (grams)',                     required: false },
+  { key: 'Weight unit for display',     label: 'Weight unit',                        required: false },
+  { key: 'Requires shipping',           label: 'Requires shipping',                  required: false },
+  { key: 'Fulfillment service',         label: 'Fulfillment service',                required: false },
+  { key: 'Product image URL',           label: 'Product image URL',                  required: false },
+  { key: 'Image position',              label: 'Image position',                     required: false },
+  { key: 'Image alt text',              label: 'Image alt text',                     required: false },
+  { key: 'Option1 name',                label: 'Option1 name',                       required: false },
+  { key: 'Option1 value',               label: 'Option1 value',                      required: false },
+  { key: 'SEO title',                   label: 'SEO title',                          required: false },
+  { key: 'SEO description',             label: 'SEO description',                    required: false },
+];
+
+const ALL_SHOPIFY_HEADERS = [
+  'Title','URL handle','Description','Vendor','Product category','Type','Tags',
+  'Published on online store','Status','SKU','Barcode',
+  'Option1 name','Option1 value','Option1 Linked To',
+  'Option2 name','Option2 value','Option2 Linked To',
+  'Option3 name','Option3 value','Option3 Linked To',
+  'Price','Compare-at price','Cost per item','Charge tax','Tax code',
+  'Unit price total measure','Unit price total measure unit',
+  'Unit price base measure','Unit price base measure unit',
+  'Inventory tracker','Inventory quantity','Continue selling when out of stock',
+  'Weight value (grams)','Weight unit for display','Requires shipping',
+  'Fulfillment service','Product image URL','Image position','Image alt text',
+  'Variant image URL','Gift card','SEO title','SEO description',
+  'Color (product.metafields.shopify.color-pattern)',
+  'Google Shopping / Google product category','Google Shopping / Gender',
+  'Google Shopping / Age group','Google Shopping / Manufacturer part number (MPN)',
+  'Google Shopping / Ad group name','Google Shopping / Ads labels',
+  'Google Shopping / Condition','Google Shopping / Custom product',
+  'Google Shopping / Custom label 0','Google Shopping / Custom label 1',
+  'Google Shopping / Custom label 2','Google Shopping / Custom label 3',
+  'Google Shopping / Custom label 4',
+];
+
+// ─── Step navigation ──────────────────────────────────────────────────────────
+function goStep(n) {
+  if (n > state.step + 1) return;
+  if (n === 2 && !state.headers.length) return;
+  if (n === 3 && !state.headers.length) return;
+  if (n === 4 && !state.headers.length) return;
+  state.step = n;
+  render();
+}
+
+// ─── File loading ─────────────────────────────────────────────────────────────
+function handleFile(file) {
+  state.file = file;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const wb = XLSX.read(e.target.result, { type: 'array' });
+    state.workbook = wb;
+    state.sheets = wb.SheetNames;
+    state.activeSheet = 0;
+    loadSheet();
+    render();
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function loadSheet() {
+  const name = state.sheets[state.activeSheet];
+  const ws = state.workbook.Sheets[name];
+  state.rawData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  parseHeadersAndData();
+}
+
+function detectBestHeaderRow() {
+  // Keywords that strongly indicate a header row
+  const headerKeywords = [
+    'title','name','productname','bezeichnung',
+    'sku','barcode','ean','price','preis',
+    'description','vendor','type','image','url',
+    'handle','status','tags','weight','quantity'
+  ];
+  const normalize = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+  let bestRow = 0, bestScore = -1;
+  for (let i = 0; i < Math.min(10, state.rawData.length); i++) {
+    const row = state.rawData[i] || [];
+    let score = 0;
+    for (const cell of row) {
+      const n = normalize(cell);
+      if (!n || n.length < 2) continue;
+      // +3 if matches a known header keyword
+      if (headerKeywords.some(k => n.includes(k))) score += 3;
+      // +1 for any non-numeric text
+      else if (isNaN(Number(String(cell).trim()))) score += 1;
+    }
+    if (score > bestScore) { bestScore = score; bestRow = i; }
+  }
+  return bestRow + 1; // 1-based
+}
+
+function parseHeadersAndData() {
+  // Auto-detect best header row if not manually changed
+  if (!state.headerRowManual) {
+    state.headerRow = detectBestHeaderRow();
+  }
+  const hi = state.headerRow - 1;
+  state.headers = (state.rawData[hi] || []).map((h, i) =>
+    h ? String(h).trim() : `Spalte ${i + 1}`
+  );
+  const allDataRows = state.rawData.slice(hi + 1).filter(r => r.some(c => c !== ''));
+  // Drop rows that look like sub-headers (most text cells match known header keywords)
+  const headerKeywords2 = ['title','name','productname','sku','barcode','price','preis',
+    'description','vendor','image','url','handle','status','tags','quantity','metafield',
+    'shopifyfield','categorie','category','remarks','remark'];
+  const normalize2 = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  state.sourceRows = allDataRows.filter(row => {
+    const nonEmpty = row.filter(c => String(c || '').trim() !== '');
+    if (nonEmpty.length === 0) return false;
+    const headerMatches = nonEmpty.filter(c => headerKeywords2.some(k => normalize2(c).includes(k))).length;
+    // If more than 40% of non-empty cells look like header names → skip row
+    return (headerMatches / nonEmpty.length) < 0.4;
+  });
+  autoMap();
+}
+
+function autoMap() {
+  const normalize = s => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
+  const hints = {
+    'Title': ['itemnr', 'itemno', 'item nr', 'articlenumber'],
+    'Price': ['produtprice', 'price', 'preis', 'produktpreis', 'chf'],
+    'SKU': ['skun', 'sku', 'articlenr', 'artikelnr'],
+    'Barcode': ['ean', 'barcode', 'gtin'],
+    'Description': ['description', 'body', 'beschreibung'],
+    'Vendor': ['productnamesupplier', 'vendor', 'lieferant', 'supplier', 'brand'],
+    'Product image URL': ['googledrive', 'googledrive', 'imagesrc', 'imageurl', 'image', 'bild'],
+    'Tags': ['tags', 'tag', 'kategorie'],
+    'Type': ['type', 'typ'],
+  };
+  state.mappings = {};
+  state.transforms = {};
+
+  // Average character length of non-empty values in a column
+  const avgLen = (colIdx) => {
+    const vals = state.sourceRows.map(r => String(r[colIdx] ?? '').trim()).filter(v => v);
+    if (!vals.length) return 0;
+    return vals.reduce((s, v) => s + v.length, 0) / vals.length;
+  };
+
+  // Unique value count in a column
+  const uniqueCount = (colIdx) => new Set(
+    state.sourceRows.map(r => String(r[colIdx] ?? '').trim()).filter(v => v)
+  ).size;
+
+  for (const [shopifyKey, keywords] of Object.entries(hints)) {
+    const candidates = [];
+    for (const [i, h] of state.headers.entries()) {
+      const n = normalize(h);
+      if (keywords.some(k => n.includes(normalize(k)))) candidates.push(i);
+    }
+    if (!candidates.length) continue;
+
+    let bestIdx = candidates[0];
+
+    // For SKU/Barcode: prefer column where values look numeric
+    if ((shopifyKey === 'SKU' || shopifyKey === 'Barcode') && candidates.length > 1) {
+      const numericCol = candidates.find(i =>
+        state.sourceRows.slice(0, 5).some(r => /^\d{6,}/.test(String(r[i] ?? '')))
+      );
+      if (numericCol !== undefined) bestIdx = numericCol;
+    }
+
+    state.mappings[shopifyKey] = { type: 'column', value: String(bestIdx) };
+
+    if (shopifyKey === 'Product image URL') {
+      const hn = normalize(state.headers[bestIdx] || '');
+      if (hn.includes('drive') || hn.includes('gdrive') || hn.includes('google')) {
+        state.transforms['Product image URL'] = ['gdrive'];
+      }
+    }
+    if (shopifyKey === 'SKU' || shopifyKey === 'Barcode') {
+      state.transforms[shopifyKey] = ['strip_zeros'];
+    }
+  }
+
+  // Defaults
+  if (!state.mappings['Published on online store']) {
+    state.mappings['Published on online store'] = { type: 'static', value: 'TRUE' };
+  }
+  if (!state.mappings['Status']) {
+    state.mappings['Status'] = { type: 'static', value: 'Active' };
+  }
+  if (!state.mappings['Inventory tracker']) {
+    state.mappings['Inventory tracker'] = { type: 'static', value: 'shopify' };
+  }
+  if (!state.mappings['Inventory quantity']) {
+    state.mappings['Inventory quantity'] = { type: 'static', value: '10' };
+  }
+  if (!state.mappings['Continue selling when out of stock']) {
+    state.mappings['Continue selling when out of stock'] = { type: 'static', value: 'DENY' };
+  }
+  if (!state.mappings['Requires shipping']) {
+    state.mappings['Requires shipping'] = { type: 'static', value: 'TRUE' };
+  }
+  if (!state.mappings['Fulfillment service']) {
+    state.mappings['Fulfillment service'] = { type: 'static', value: 'manual' };
+  }
+  if (!state.mappings['Option1 name']) {
+    state.mappings['Option1 name'] = { type: 'static', value: 'Title' };
+  }
+  if (!state.mappings['Option1 value']) {
+    state.mappings['Option1 value'] = { type: 'static', value: 'Default Title' };
+  }
+  if (!state.mappings['Weight value (grams)']) {
+    state.mappings['Weight value (grams)'] = { type: 'static', value: '0' };
+  }
+  if (!state.mappings['Weight unit for display']) {
+    state.mappings['Weight unit for display'] = { type: 'static', value: 'g' };
+  }
+  if (!state.mappings['Charge tax']) {
+    state.mappings['Charge tax'] = { type: 'static', value: 'TRUE' };
+  }
+}
+
+// ─── Transforms ───────────────────────────────────────────────────────────────
+function applyTransforms(value, field) {
+  const ts = state.transforms[field] || [];
+  let v = String(value ?? '').trim();
+  if (ts.includes('slugify')) {
+    v = v.toLowerCase()
+      .replace(/[äöü]/g, m => ({ä:'ae',ö:'oe',ü:'ue'}[m]))
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .slice(0, 255);
+  }
+  if (ts.includes('gdrive')) {
+    const m = v.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    if (m) v = `https://lh3.googleusercontent.com/d/${m[1]}`;
+  }
+  if (ts.includes('strip_zeros')) {
+    if (v.endsWith('.0')) v = v.slice(0, -2);
+  }
+  if (ts.includes('uppercase')) v = v.toUpperCase();
+  if (ts.includes('lowercase')) v = v.toLowerCase();
+  return v;
+}
+
+function getFieldValue(row, fieldKey) {
+  const m = state.mappings[fieldKey];
+  if (!m || m.value === '') return '';
+  if (m.type === 'static') return m.value;
+  const idx = parseInt(m.value);
+  if (isNaN(idx)) return '';
+  return applyTransforms(row[idx] ?? '', fieldKey);
+}
+
+// ─── Generate CSV ─────────────────────────────────────────────────────────────
+function buildCSVString() {
+  const metafieldHeaders = state.metafields
+    .filter(mf => mf.label && mf.key)
+    .map(mf => `${mf.label} (product.metafields.${mf.namespace || 'custom'}.${mf.key})`);
+
+  const allHeaders = [...ALL_SHOPIFY_HEADERS, ...metafieldHeaders];
+  const rows = [allHeaders];
+
+  for (const row of state.sourceRows) {
+    if (row.every(c => c === '' || c === null || c === undefined)) continue;
+
+    const csvRow = {};
+    for (const h of allHeaders) csvRow[h] = '';
+
+    for (const field of SHOPIFY_FIELDS) {
+      csvRow[field.key] = getFieldValue(row, field.key);
+    }
+
+    if (!csvRow['URL handle'] && csvRow['Title']) {
+      csvRow['URL handle'] = csvRow['Title'].toLowerCase()
+        .replace(/[äöü]/g, m => ({ä:'ae',ö:'oe',ü:'ue'}[m]))
+        .replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').slice(0, 255);
+    }
+    if (csvRow['Product image URL'] && !csvRow['Image position']) csvRow['Image position'] = '1';
+    if (csvRow['Product image URL'] && !csvRow['Image alt text'] && csvRow['Title']) {
+      csvRow['Image alt text'] = csvRow['Title'];
+    }
+
+    for (const [i, mf] of state.metafields.entries()) {
+      if (!mf.label || !mf.key) continue;
+      const hKey = metafieldHeaders[i];
+      if (mf.sourceCol !== '' && mf.sourceCol !== undefined) {
+        const idx = parseInt(mf.sourceCol);
+        const val = isNaN(idx) ? (mf.staticValue || '') : String(row[idx] ?? '').trim();
+        csvRow[hKey] = val.endsWith('.0') ? val.slice(0, -2) : val;
+      } else {
+        csvRow[hKey] = mf.staticValue || '';
+      }
+    }
+
+    rows.push(allHeaders.map(h => csvRow[h] ?? ''));
+  }
+
+  const escape = v => {
+    const s = String(v ?? '');
+    return (s.includes(',') || s.includes('"') || s.includes('\n'))
+      ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+
+  return {
+    csv: rows.map(r => r.map(escape).join(',')).join('\r\n'),
+    count: rows.length - 1,
+    filename: (state.file?.name.replace(/\.[^.]+$/, '') || 'export') + '_shopify_import.csv'
+  };
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+function render() {
+  updateStepTabs();
+  const content = document.getElementById('mainContent');
+  const bar = document.getElementById('actionBar');
+
+  if (state.step === 1) { renderStep1(content, bar); }
+  else if (state.step === 2) { renderStep2(content, bar); }
+  else if (state.step === 3) { renderStep3(content, bar); }
+  else if (state.step === 4) { renderStep4(content, bar); }
+}
+
+function updateStepTabs() {
+  document.querySelectorAll('.step-tab').forEach(el => {
+    const n = parseInt(el.dataset.step);
+    el.className = 'step-tab';
+    if (n === state.step) el.classList.add('active');
+    else if (n < state.step) el.classList.add('done');
+    else if (n > state.step + 1 || (n > 1 && !state.headers.length)) el.classList.add('locked');
+  });
+}
+
+// Step 1: File upload
+function renderStep1(content, bar) {
+  const previewRows = state.rawData.slice(0, 6);
+  const colCount = state.headers.length;
+
+  content.innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><h3>📂 Datei hochladen</h3></div>
+      <div class="panel-body">
+        ${!state.file ? `
+          <div class="upload-zone" id="dropZone" onclick="document.getElementById('fileInput').click()"
+               ondragover="event.preventDefault();this.classList.add('drag')"
+               ondragleave="this.classList.remove('drag')"
+               ondrop="event.preventDefault();this.classList.remove('drag');handleFile(event.dataTransfer.files[0])">
+            <div class="upload-icon">📊</div>
+            <div class="upload-title">Datei hier ablegen oder klicken</div>
+            <div class="upload-sub">Wähle deine Produkt-Exportdatei aus</div>
+            <div class="upload-types">
+              <span class="type-badge">.xlsx</span>
+              <span class="type-badge">.xls</span>
+              <span class="type-badge">.csv</span>
+            </div>
+          </div>
+          <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none"
+                 onchange="handleFile(this.files[0])">
+        ` : `
+          <div class="file-loaded">
+            <span class="icon">📊</span>
+            <div>
+              <div class="name">${state.file.name}</div>
+              <div class="meta">${state.sourceRows.length} Produkte · ${colCount} Spalten gefunden</div>
+            </div>
+            <button class="change-btn" onclick="resetFile()">Andere Datei</button>
+          </div>
+        `}
+      </div>
+    </div>
+
+    ${state.workbook ? `
+    <div class="panel">
+      <div class="panel-head"><h3>⚙️ Einstellungen</h3></div>
+      <div class="panel-body">
+        ${state.sheets.length > 1 ? `
+          <div class="section-label">Tabellenblatt</div>
+          <div class="sheet-tabs">
+            ${state.sheets.map((s, i) => `
+              <div class="sheet-tab ${i === state.activeSheet ? 'active' : ''}"
+                   onclick="state.activeSheet=${i};loadSheet();render()">${s}</div>
+            `).join('')}
+          </div>
+        ` : ''}
+        <div class="row-selector" style="margin-top:${state.sheets.length > 1 ? '14px' : '0'}">
+          <label>Kopfzeile (Zeile Nr.):</label>
+          <input class="num-input" type="number" min="1" max="20" value="${state.headerRow}"
+                 onchange="state.headerRow=parseInt(this.value)||1;state.headerRowManual=true;parseHeadersAndData();render()">
+          <span style="color:var(--muted);font-size:12px;">Erste Datensatzzeile: ${state.headerRow + 1} &nbsp;·&nbsp; ${state.headers.filter(h => !h.startsWith('Spalte')).length} Spalten erkannt</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h3>👁 Vorschau</h3>
+        <span class="hint">${state.sourceRows.length} Zeilen · ${colCount} Spalten</span>
+      </div>
+      <div class="panel-body" style="padding:0;">
+        <div class="preview-wrap">
+          <table class="preview-table">
+            <thead>
+              <tr>
+                <th class="col-idx">#</th>
+                ${state.headers.map((h, i) => `<th>${i}: ${h}</th>`).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${state.sourceRows.slice(0, 4).map((row, ri) => `
+                <tr>
+                  <td class="col-idx">${ri + 1}</td>
+                  ${state.headers.map((_, ci) => `<td title="${row[ci] ?? ''}">${String(row[ci] ?? '').slice(0, 30)}</td>`).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    ` : ''}
+  `;
+
+  bar.innerHTML = `
+    <span style="color:var(--muted);font-size:13px;">${state.file ? `${state.sourceRows.length} Zeilen erkannt` : 'Bitte Datei auswählen'}</span>
+    <div class="spacer"></div>
+    <button class="btn btn-primary" onclick="goStep(2)" ${!state.headers.length ? 'disabled' : ''}>
+      Weiter → Spalten zuordnen
+    </button>
+  `;
+}
+
+function resetFile() {
+  state.file = null; state.workbook = null; state.sheets = [];
+  state.rawData = []; state.headers = []; state.sourceRows = [];
+  state.mappings = {}; state.step = 1;
+  render();
+}
+
+// Step 2: Column mapping
+function renderStep2(content, bar) {
+  // Only show columns that have at least one non-empty value in the data
+  const filledCols = state.headers.map((h, i) => {
+    const hasData = state.sourceRows.some(row => String(row[i] ?? '').trim() !== '');
+    return hasData ? { i, h } : null;
+  }).filter(Boolean);
+
+  const colOptions = `
+    <option value="">— nicht mappen —</option>
+    ${filledCols.map(({ i, h }) => `<option value="${i}">${h}</option>`).join('')}
+  `;
+
+  const fieldRows = SHOPIFY_FIELDS.map(field => {
+    const m = state.mappings[field.key] || { type: 'column', value: '' };
+    const isStatic = m.type === 'static';
+    const ts = state.transforms[field.key] || [];
+
+    const TRANSFORM_OPTIONS = {
+      'Title': [],
+      'URL handle': ['slugify'],
+      'Price': ['strip_zeros'],
+      'SKU': ['strip_zeros'],
+      'Barcode': ['strip_zeros'],
+      'Product image URL': ['gdrive'],
+    };
+    const availableT = TRANSFORM_OPTIONS[field.key] || [];
+
+    return `
+      <div class="map-row">
+        <div class="map-target">
+          <div class="field-name">${field.label}</div>
+          ${field.required ? '<div class="field-required">★ Pflicht</div>' : ''}
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;padding:0 6px;">
+          <button class="btn btn-sm ${isStatic ? 'btn-green' : 'btn-ghost'}" style="padding:4px 8px;font-size:10px;min-width:52px;"
+                  onclick="toggleMappingType('${field.key}')">
+            ${isStatic ? '✎ Fest' : '⇄ Spalte'}
+          </button>
+        </div>
+        ${isStatic ? `
+          <input class="static-input" placeholder="Fester Wert..." value="${m.value}"
+                 onchange="state.mappings['${field.key}']={type:'static',value:this.value}">
+        ` : `
+          <select class="map-select" onchange="state.mappings['${field.key}']={type:'column',value:this.value}">
+            ${colOptions.replace(`value="${m.value}"`, `value="${m.value}" selected`)}
+          </select>
+        `}
+        ${availableT.length ? `
+          <div style="padding-right:8px;display:flex;gap:4px;">
+            ${availableT.map(t => `
+              <span class="transform-badge ${ts.includes(t) ? 'active' : ''}"
+                    onclick="toggleTransform('${field.key}','${t}')" title="${t}">${t}</span>
+            `).join('')}
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }).join('');
+
+  content.innerHTML = `
+    <div class="callout info">
+      <span>ℹ️</span>
+      <span>Ordne jedes Shopify-Feld einer Spalte aus deiner Datei zu, oder setze einen festen Wert. Klicke auf <strong>⇄ Spalte / ✎ Fest</strong> um den Typ zu wechseln.</span>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>🔗 Spalten-Zuordnung</h3><span class="hint">Klick auf Badge aktiviert Transform</span></div>
+      <div class="panel-body" style="padding:12px;">
+        <div class="mapping-grid" id="mappingGrid">
+          ${fieldRows}
+        </div>
+      </div>
+    </div>
+  `;
+
+  bar.innerHTML = `
+    <button class="btn btn-ghost" onclick="goStep(1)">← Zurück</button>
+    <div class="spacer"></div>
+    <button class="btn btn-primary" onclick="goStep(3)">Weiter → Metafelder</button>
+  `;
+}
+
+function toggleMappingType(fieldKey) {
+  const m = state.mappings[fieldKey] || { type: 'column', value: '' };
+  state.mappings[fieldKey] = {
+    type: m.type === 'static' ? 'column' : 'static',
+    value: ''
+  };
+  renderStep2(document.getElementById('mainContent'), document.getElementById('actionBar'));
+}
+
+function toggleTransform(field, t) {
+  if (!state.transforms[field]) state.transforms[field] = [];
+  const arr = state.transforms[field];
+  const idx = arr.indexOf(t);
+  if (idx === -1) arr.push(t); else arr.splice(idx, 1);
+  renderStep2(document.getElementById('mainContent'), document.getElementById('actionBar'));
+}
+
+// Step 3: Metafields
+function renderStep3(content, bar) {
+  if (!state.metafields.length) {
+    // Helper: find column index by partial header name match
+    const findCol = (...keywords) => {
+      const norm = s => String(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+      for (const kw of keywords) {
+        const idx = state.headers.findIndex(h => norm(h).includes(norm(kw)));
+        if (idx !== -1) return String(idx);
+      }
+      return '';
+    };
+    state.metafields = [
+      { label: 'Spare Part Model', namespace: 'custom', key: 'spare_part_model',
+        sourceCol: findCol('Item NR', 'itemnr', 'itemnrsupplier'), staticValue: 'skymax-ultra' },
+      { label: 'Spare Part Years', namespace: 'custom', key: 'spare_part_years',
+        sourceCol: findCol('Productionyear', 'productionyear', 'year'), staticValue: '2024,2025,2026' },
+      { label: 'Spare Part Type',  namespace: 'custom', key: 'spare_part_type',
+        sourceCol: findCol('Item NR', 'itemnr', 'itemnrsupplier'), staticValue: '' },
+      { label: 'Part Number',      namespace: 'custom', key: 'part_number',
+        sourceCol: findCol('SKU NR', 'skunr', 'skunrsupplier', 'partnumber'), staticValue: '' },
+      { label: 'Spare Part Group', namespace: 'custom', key: 'spare_part_group',
+        sourceCol: findCol('Spare Part Group', 'sparepartgroup', 'partgroup'), staticValue: '' },
+    ];
+  }
+
+  const filledCols3 = state.headers.map((h, i) => {
+    const hasData = state.sourceRows.some(row => String(row[i] ?? '').trim() !== '');
+    return hasData ? { i, h } : null;
+  }).filter(Boolean);
+
+  const colOptions = `
+    <option value="">— fester Wert —</option>
+    ${filledCols3.map(({ i, h }) => `<option value="${i}">${h}</option>`).join('')}
+  `;
+
+  const rows = state.metafields.map((mf, i) => `
+    <div class="mf-row" id="mfrow-${i}">
+      <input class="mf-input" placeholder="Label (z.B. Part Number)" value="${mf.label}"
+             onchange="state.metafields[${i}].label=this.value">
+      <input class="mf-input" placeholder="key (z.B. part_number)" value="${mf.key}"
+             onchange="state.metafields[${i}].key=this.value" style="color:var(--gold)">
+      <select class="mf-input map-select" onchange="state.metafields[${i}].sourceCol=this.value;render()">
+        ${colOptions.replace(`value="${mf.sourceCol}"`, `value="${mf.sourceCol}" selected`)}
+      </select>
+      ${mf.sourceCol === '' ? `
+        <input class="mf-input" placeholder="Fester Wert..." value="${mf.staticValue || ''}"
+               onchange="state.metafields[${i}].staticValue=this.value" style="color:rgba(255,255,255,0.6)">
+      ` : `<div></div>`}
+      <button class="btn btn-danger btn-sm" onclick="state.metafields.splice(${i},1);render()">✕</button>
+    </div>
+  `).join('');
+
+  content.innerHTML = `
+    <div class="callout info">
+      <span>ℹ️</span>
+      <span>Metafelder müssen vorher in Shopify unter <strong>Settings → Custom data → Products</strong> angelegt sein (Typ: Single line text). Der <strong>Key</strong> muss exakt übereinstimmen.</span>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>🏷 Metafelder konfigurieren</h3></div>
+      <div class="panel-body">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;margin-bottom:8px;padding:0 0 8px;border-bottom:1px solid var(--border);">
+          <span class="section-label">Label</span>
+          <span class="section-label">Key (custom.*)</span>
+          <span class="section-label">Spalte aus Datei</span>
+          <span class="section-label">oder fester Wert</span>
+          <span></span>
+        </div>
+        <div class="mf-list" id="mfList">${rows}</div>
+        <button class="btn btn-ghost btn-sm" style="margin-top:12px;"
+                onclick="state.metafields.push({label:'',namespace:'custom',key:'',sourceCol:'',staticValue:''});render()">
+          + Metafeld hinzufügen
+        </button>
+      </div>
+    </div>
+  `;
+
+  bar.innerHTML = `
+    <button class="btn btn-ghost" onclick="goStep(2)">← Zurück</button>
+    <div class="spacer"></div>
+    <button class="btn btn-primary" onclick="goStep(4)">Weiter → Exportieren</button>
+  `;
+}
+
+// Step 4: Export
+function renderStep4(content, bar) {
+  const validMappings = SHOPIFY_FIELDS.filter(f => {
+    const m = state.mappings[f.key];
+    return m && m.value !== '';
+  }).length;
+  const validMF = state.metafields.filter(mf => mf.label && mf.key).length;
+
+  const preview = state.sourceRows.slice(0, 3).map(row => {
+    const title = getFieldValue(row, 'Title') || '(kein Titel)';
+    const sku = getFieldValue(row, 'SKU') || '—';
+    const price = getFieldValue(row, 'Price') || '—';
+    return `<tr>
+      <td>${title.slice(0, 45)}</td>
+      <td><code>${sku}</code></td>
+      <td>${price}</td>
+    </tr>`;
+  }).join('');
+
+  content.innerHTML = `
+    <div class="stats">
+      <div class="stat"><div class="n">${state.sourceRows.length}</div><div class="l">Produkte</div></div>
+      <div class="stat"><div class="n">${validMappings}</div><div class="l">Felder gemappt</div></div>
+      <div class="stat"><div class="n">${validMF}</div><div class="l">Metafelder</div></div>
+      <div class="stat"><div class="n">${ALL_SHOPIFY_HEADERS.length + validMF}</div><div class="l">CSV-Spalten total</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h3>👁 Vorschau (erste 3 Zeilen)</h3></div>
+      <div class="panel-body" style="padding:0;">
+        <div class="preview-wrap">
+          <table class="preview-table">
+            <thead><tr><th>Title</th><th>SKU</th><th>Price</th></tr></thead>
+            <tbody>${preview}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="result-box" id="resultBox">
+      <div class="big">${state.sourceRows.length}</div>
+      <div class="label">Produkte bereit für Export</div>
+      <button class="btn btn-primary" style="font-size:15px;padding:12px 28px;" onclick="doExport()">
+        ⬇ CSV herunterladen
+      </button>
+    </div>
+  `;
+
+  bar.innerHTML = `
+    <button class="btn btn-ghost" onclick="goStep(3)">← Zurück</button>
+    <div class="spacer"></div>
+    <button class="btn btn-primary" style="font-size:14px;" onclick="doExport()">⬇ CSV herunterladen</button>
+  `;
+}
+
+function doExport() {
+  const { csv, count, filename } = buildCSVString();
+  const bom = '\uFEFF';
+  const full = bom + csv;
+
+  // Try clipboard first, fall back to textarea
+  const showTextarea = () => {
+    document.getElementById('resultBox').innerHTML = `
+      <div class="big" style="color:var(--green);font-size:32px;">✓ ${count} Produkte</div>
+      <p style="color:var(--muted);font-size:13px;margin:8px 0 12px;">CSV-Inhalt unten kopieren → in .csv Datei einfügen und speichern</p>
+      <button onclick="
+        var ta=document.getElementById('csvout');
+        ta.select();ta.setSelectionRange(0,999999);
+        navigator.clipboard.writeText(ta.value).then(()=>{
+          this.textContent='✓ Kopiert!';this.style.background='var(--green)';this.style.color='#fff';
+          setTimeout(()=>{this.textContent='Alles kopieren';this.style.background='';this.style.color='';},2000);
+        }).catch(()=>{document.execCommand('copy');});
+      " class="btn btn-primary" style="margin-bottom:10px;">Alles kopieren</button>
+      <textarea id="csvout" readonly
+        style="width:100%;height:180px;background:#0a0a0a;border:1px solid var(--border);border-radius:8px;
+               padding:10px;font-family:'DM Mono',monospace;font-size:11px;color:rgba(255,255,255,0.6);
+               resize:vertical;display:block;"
+        onclick="this.select()">${full.replace(/</g,'&lt;')}</textarea>
+      <p style="color:var(--muted);font-size:11px;margin-top:6px;">Tipp: Alles kopieren → neues Textdokument → einfügen → als <code>.csv</code> speichern</p>
+      <button class="btn btn-ghost btn-sm" style="margin-top:10px;" onclick="resetFile()">Neue Datei</button>
+    `;
+  };
+
+  // Try blob URL (works when not sandboxed)
+  try {
+    const blob = new Blob([full], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; a.style.display = 'none';
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+
+    document.getElementById('resultBox').innerHTML = `
+      <div class="big" style="color:var(--green)">✓</div>
+      <div class="label" style="color:var(--green);font-weight:600;">${count} Produkte exportiert</div>
+      <p style="color:var(--muted);font-size:13px;margin-top:8px;">Download gestartet: <code>${filename}</code></p>
+      <button class="btn btn-ghost btn-sm" style="margin-top:12px;" onclick="doExport()">Nochmal herunterladen</button>
+      <button class="btn btn-ghost btn-sm" style="margin-top:12px;margin-left:8px;" onclick="resetFile()">Neue Datei</button>
+    `;
+  } catch(e) {
+    showTextarea();
+  }
+
+  document.getElementById('actionBar').innerHTML = `
+    <button class="btn btn-ghost" onclick="goStep(3)">← Zurück</button>
+    <div class="spacer"></div>
+    <button class="btn btn-primary" style="font-size:14px;" onclick="doExport()">⬇ CSV herunterladen</button>
+  `;
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+render();
+</script>
+</body>
+</html>
